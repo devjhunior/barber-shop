@@ -1,0 +1,142 @@
+import React, { useState, useEffect } from 'react';
+import { Platform, RefreshControl } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+
+import { request, PERMISSIONS } from 'react-native-permissions';
+import Geolocation from '@react-native-community/geolocation';
+
+import Api from '../../Api';
+
+import { 
+    Container,
+    Scroller,
+
+    HeaderArea,
+    HeaderTitle,
+    SearchButtom,
+
+    LocationArea,
+    LocationInput,
+    LocationFinder,
+    
+    LoadingIcon,
+    ListArea
+} from './styles';
+
+import BarberItem from '../../components/BarberItem';
+
+import SearchIcon from '../../assets/search.svg';
+import MyLocationIcon from '../../assets/my_location.svg'
+
+export default () => {
+
+    const navigation = useNavigation();
+
+    const [locationText, setLocationText] = useState('');
+    const [coords, setCoords] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [list, setList] = useState([]);
+    const [refreshing, setRefreshing] = useState(false);
+
+    const handlerLocationFinder = async () => {
+        setCoords(null);
+
+        // pedir permissão android
+        let result = await request (
+            Platform.OS === 'ios' ?
+                PERMISSIONS.IOS.LOCATION_WHEN_IN_USE
+                :
+                PERMISSIONS.ANDROID.ACCESS_FINE_LOCATION
+        );
+        if (result == 'granted') {
+            setLoading(true);
+            setLocationText('');
+            setList([]);
+
+            Geolocation.getCurrentPosition((info)=>{
+                setCoords(info.coords);
+                getBarbers();
+            });
+        }
+    }
+
+    const getBarbers = async () => {
+        setLoading(true);
+        setList([]);
+
+        let lat = null;
+        let lng = null;
+
+        if (coords) {
+            lat = coords.latitude;
+            lng = coords.longitude;
+        }
+
+        let res = await Api.getBarbers(lat, lng, locationText);
+
+        if (res.error =='') {
+            if (res.loc) {
+                setLocationText(res.loc);
+            }
+            setList(res.data);
+        } else {
+            alert("Erro: " + res.error);
+        }
+
+        setLoading(false);
+    }
+
+    useEffect(()=>{
+        getBarbers();
+    }, []);
+
+    const onRefresh = () => {
+        setRefreshing(false);
+        getBarbers();
+    }
+
+    const handlerLocationSearch = () => {
+        setCoords({});
+        getBarbers()
+    }
+
+    return (
+        <Container>
+            <Scroller refreshControl={
+                <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+            }>
+
+                <HeaderArea>
+                    <HeaderTitle numberOfLines={2}>Encontre o serviço mais próximo de você</HeaderTitle>
+                    <SearchButtom onPress={()=>navigation.navigate('Search')}>
+                        <SearchIcon width="26" height="26" fill="#FFFFFF"/>
+                    </SearchButtom>
+                </HeaderArea>
+
+                <LocationArea>
+                    <LocationInput 
+                        placeholder="Onde você está agora?"
+                        placeholderTextColor="#FFFFFF"
+                        value={locationText}
+                        onChangeText={t=>setLocationText(t)}
+                        onEndEditing={handlerLocationSearch}
+                    />
+                    <LocationFinder onPress={handlerLocationFinder}>
+                        <MyLocationIcon width="24" height="24" fill="#FFFFFF" />
+                    </LocationFinder>
+                </LocationArea>
+
+                {loading &&
+                    <LoadingIcon size="large" color="#FFFFFF" />
+                }
+
+                <ListArea>
+                    {list.map((item, k)=>(
+                        <BarberItem key={k} data={item} />
+                    ))}
+                </ListArea>
+
+            </Scroller>
+        </Container>
+    );
+}
